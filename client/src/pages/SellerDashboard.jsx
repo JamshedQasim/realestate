@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 
@@ -14,8 +14,132 @@ const STATUS_COLORS = {
 const EMPTY_FORM = {
   title: "", address: "", city: "", property_type: "apartment",
   description: "", price: "", bedrooms: "", bathrooms: "",
-  size_sqft: "", status: "for_sale", image_url: "",
+  size_sqft: "", status: "for_sale",
 };
+
+// ── Image uploader component ──────────────────────────────────────────────────
+function ImageUploader({ token, onUploaded }) {
+  const inputRef = useRef(null);
+  const [previews, setPreviews] = useState([]); // { src, file }
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+
+  function handleFiles(files) {
+    const valid = Array.from(files).filter(f => f.type.startsWith("image/")).slice(0, 10);
+    if (!valid.length) return;
+    const newPreviews = valid.map(file => ({
+      src: URL.createObjectURL(file),
+      file,
+      name: file.name,
+    }));
+    setPreviews(prev => [...prev, ...newPreviews].slice(0, 10));
+  }
+
+  function removePreview(idx) {
+    setPreviews(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    handleFiles(e.dataTransfer.files);
+  }
+
+  async function uploadAll() {
+    if (!previews.length) return;
+    setUploading(true);
+    setError("");
+    try {
+      const fd = new FormData();
+      previews.forEach(p => fd.append("images", p.file));
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Upload failed");
+      onUploaded(data.urls);
+      setPreviews([]);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div>
+      {/* Drop zone */}
+      <div
+        onDrop={handleDrop}
+        onDragOver={e => e.preventDefault()}
+        onClick={() => inputRef.current?.click()}
+        style={{
+          border: "2px dashed var(--border-subtle)",
+          borderRadius: "var(--radius-md)",
+          padding: "28px 16px",
+          textAlign: "center",
+          cursor: "pointer",
+          background: "var(--surface-soft)",
+          transition: "border-color 0.15s",
+        }}
+        onMouseEnter={e => e.currentTarget.style.borderColor = "var(--accent)"}
+        onMouseLeave={e => e.currentTarget.style.borderColor = "var(--border-subtle)"}
+      >
+        <div style={{ fontSize: "2rem", marginBottom: 6 }}>🖼️</div>
+        <div style={{ fontWeight: 600, fontSize: "0.9rem", marginBottom: 4 }}>
+          Click or drag &amp; drop photos here
+        </div>
+        <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+          JPG, PNG, WEBP — up to 8 MB each, max 10 photos
+        </div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          style={{ display: "none" }}
+          onChange={e => handleFiles(e.target.files)}
+        />
+      </div>
+
+      {/* Previews grid */}
+      {previews.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: 8, marginTop: 10 }}>
+          {previews.map((p, i) => (
+            <div key={i} style={{ position: "relative", borderRadius: 8, overflow: "hidden", aspectRatio: "1", background: "#eee" }}>
+              <img src={p.src} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); removePreview(i); }}
+                style={{ position: "absolute", top: 3, right: 3, width: 20, height: 20, borderRadius: "50%", background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", cursor: "pointer", fontSize: "0.7rem", display: "flex", alignItems: "center", justifyContent: "center" }}
+              >
+                ✕
+              </button>
+              {i === 0 && (
+                <span style={{ position: "absolute", bottom: 3, left: 3, background: "var(--accent)", color: "#fff", fontSize: "0.6rem", fontWeight: 700, padding: "2px 5px", borderRadius: 4 }}>COVER</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {error && <p style={{ color: "#c0392b", fontSize: "0.82rem", margin: "6px 0 0" }}>{error}</p>}
+
+      {previews.length > 0 && (
+        <button
+          type="button"
+          className="btn btn-primary"
+          style={{ marginTop: 10, fontSize: "0.82rem" }}
+          onClick={uploadAll}
+          disabled={uploading}
+        >
+          {uploading ? "Uploading…" : `Upload ${previews.length} photo${previews.length > 1 ? "s" : ""}`}
+        </button>
+      )}
+    </div>
+  );
+}
 
 export default function SellerDashboard() {
   const { user, token } = useAuth();
@@ -28,6 +152,7 @@ export default function SellerDashboard() {
 
   const [showForm, setShowForm]   = useState(false);
   const [form, setForm]           = useState(EMPTY_FORM);
+  const [uploadedUrls, setUploadedUrls] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError]   = useState("");
 
@@ -53,16 +178,18 @@ export default function SellerDashboard() {
     setSubmitting(true);
     setFormError("");
     try {
+      const payload = { ...form, image_url: uploadedUrls[0] || "" };
       const res = await fetch("/api/seller/properties", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to list property");
-      const newProp = { ...form, id: data.id, created_at: new Date().toISOString() };
+      const newProp = { ...payload, id: data.id, created_at: new Date().toISOString() };
       setProperties(prev => [newProp, ...prev]);
       setForm(EMPTY_FORM);
+      setUploadedUrls([]);
       setShowForm(false);
     } catch (err) {
       setFormError(err.message);
@@ -88,7 +215,7 @@ export default function SellerDashboard() {
           <h1 className="page-title">Welcome{user?.fullName ? `, ${user.fullName}` : ""}</h1>
           <p className="page-subtitle">Manage your listings, track inquiries and deal progress.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowForm(s => !s)}>
+        <button className="btn btn-primary" onClick={() => { setShowForm(s => !s); if (showForm) { setForm(EMPTY_FORM); setUploadedUrls([]); } }}>
           {showForm ? "✕ Cancel" : "+ List a property"}
         </button>
       </section>
@@ -166,8 +293,31 @@ export default function SellerDashboard() {
               </div>
             </div>
             <div className="form-row" style={{ marginTop: 10 }}>
-              <label className="field-label">Image URL (optional)</label>
-              <input className="input" name="image_url" value={form.image_url} onChange={handleFormChange} placeholder="https://…" />
+              <label className="field-label">Property photos</label>
+              <ImageUploader
+                token={token}
+                onUploaded={urls => setUploadedUrls(prev => [...prev, ...urls])}
+              />
+              {/* Uploaded thumbnails row */}
+              {uploadedUrls.length > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: 6 }}>
+                    ✅ {uploadedUrls.length} photo{uploadedUrls.length > 1 ? "s" : ""} uploaded — first will be the cover image
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {uploadedUrls.map((url, i) => (
+                      <div key={i} style={{ position: "relative" }}>
+                        <img src={url} alt="" style={{ width: 70, height: 56, objectFit: "cover", borderRadius: 6, border: i === 0 ? "2px solid var(--accent)" : "2px solid var(--border-subtle)" }} />
+                        <button
+                          type="button"
+                          onClick={() => setUploadedUrls(prev => prev.filter((_, j) => j !== i))}
+                          style={{ position: "absolute", top: -4, right: -4, width: 18, height: 18, borderRadius: "50%", background: "#c0392b", color: "#fff", border: "none", cursor: "pointer", fontSize: "0.6rem", display: "flex", alignItems: "center", justifyContent: "center" }}
+                        >✕</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="form-row" style={{ marginTop: 10 }}>
               <label className="field-label">Description (optional)</label>

@@ -19,47 +19,25 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
+        {/* Public pages — accessible without login */}
         <Route index element={<HomePage />} />
-        <Route path="properties" element={<PropertiesPage />} />
-        <Route path="properties/:id" element={<PropertyDetailPage />} />
-        <Route path="agents" element={<AgentsPage />} />
-        <Route path="services" element={<ServicesPage />} />
-        <Route path="blog" element={<BlogPage />} />
-        <Route path="contact" element={<ContactPage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
-        <Route
-          path="buyer-dashboard"
-          element={
-            <ProtectedRoute allowedRoles={["buyer"]}>
-              <BuyerDashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="seller-dashboard"
-          element={
-            <ProtectedRoute allowedRoles={["seller"]}>
-              <SellerDashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="agent-dashboard"
-          element={
-            <ProtectedRoute allowedRoles={["agent"]}>
-              <AgentDashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="admin-dashboard"
-          element={
-            <ProtectedRoute allowedRoles={["admin"]}>
-              <AdminDashboard />
-            </ProtectedRoute>
-          }
-        />
+
+        {/* Auth-required pages — any logged-in role */}
+        <Route path="properties" element={<ProtectedRoute><PropertiesPage /></ProtectedRoute>} />
+        <Route path="properties/:id" element={<ProtectedRoute><PropertyDetailPage /></ProtectedRoute>} />
+        <Route path="agents" element={<ProtectedRoute><AgentsPage /></ProtectedRoute>} />
+        <Route path="services" element={<ProtectedRoute><ServicesPage /></ProtectedRoute>} />
+        <Route path="blog" element={<ProtectedRoute><BlogPage /></ProtectedRoute>} />
+        <Route path="contact" element={<ProtectedRoute><ContactPage /></ProtectedRoute>} />
+
+        {/* Role-specific dashboards */}
+        <Route path="buyer-dashboard" element={<ProtectedRoute allowedRoles={["buyer"]}><BuyerDashboard /></ProtectedRoute>} />
+        <Route path="seller-dashboard" element={<ProtectedRoute allowedRoles={["seller"]}><SellerDashboard /></ProtectedRoute>} />
+        <Route path="agent-dashboard" element={<ProtectedRoute allowedRoles={["agent"]}><AgentDashboard /></ProtectedRoute>} />
+        <Route path="admin-dashboard" element={<ProtectedRoute allowedRoles={["admin"]}><AdminDashboard /></ProtectedRoute>} />
+
         <Route path="*" element={<LoginPage />} />
       </Route>
     </Routes>

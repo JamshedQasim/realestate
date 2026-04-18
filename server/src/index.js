@@ -5,7 +5,29 @@ import express from "express";
 import cors from "cors";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import multer from "multer";
+import path from "path";
+import { fileURLToPath } from "url";
 import db from "./db.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Multer: store uploads in server/uploads/, keep original extension
+const storage = multer.diskStorage({
+  destination: path.join(__dirname, "../../uploads"),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `prop_${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`);
+  },
+});
+const upload = multer({
+  storage,
+  limits: { fileSize: 8 * 1024 * 1024 }, // 8 MB per file
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) cb(null, true);
+    else cb(new Error("Only image files are allowed"));
+  },
+});
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -18,6 +40,9 @@ app.use(
     origin: process.env.CLIENT_ORIGIN || "http://localhost:5173",
   })
 );
+
+// Serve uploaded images
+app.use("/uploads", express.static(path.join(__dirname, "../../uploads")));
 
 // ── JWT helpers ──────────────────────────────────────────────────────────────
 
@@ -615,6 +640,15 @@ app.get("/api/buyer/saved-ids", requireAuth, async (req, res) => {
     console.error("Error loading saved IDs", err);
     res.status(500).json({ message: "Database error" });
   }
+});
+
+// ── Image upload ──────────────────────────────────────────────────────────────
+
+app.post("/api/upload", requireSeller, upload.array("images", 10), (req, res) => {
+  if (!req.files || req.files.length === 0)
+    return res.status(400).json({ message: "No images uploaded" });
+  const urls = req.files.map(f => `/uploads/${f.filename}`);
+  res.json({ urls });
 });
 
 // ── Seller: Properties ────────────────────────────────────────────────────────

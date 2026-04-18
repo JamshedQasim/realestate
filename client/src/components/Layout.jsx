@@ -140,11 +140,15 @@ export default function Layout() {
           </div>
           <nav className="main-nav">
             <NavItem to="/">Home</NavItem>
-            <NavItem to="/properties">Properties</NavItem>
-            <NavItem to="/agents">Agents</NavItem>
-            <NavItem to="/services">Services</NavItem>
-            <NavItem to="/blog">Blog</NavItem>
-            <NavItem to="/contact">Contact</NavItem>
+            {isLoggedIn && (
+              <>
+                <NavItem to="/properties">Properties</NavItem>
+                <NavItem to="/agents">Agents</NavItem>
+                <NavItem to="/services">Services</NavItem>
+                <NavItem to="/blog">Blog</NavItem>
+                <NavItem to="/contact">Contact</NavItem>
+              </>
+            )}
           </nav>
           {!isAuthRoute && !isLoggedIn && (
             <NavLink to="/login" className="btn btn-login">Login</NavLink>
@@ -152,7 +156,9 @@ export default function Layout() {
           {!isAuthRoute && isLoggedIn && (
             <>
               <NotificationBell token={token} />
-              <button type="button" className="btn btn-login" onClick={goToDashboard}>My dashboard</button>
+              <button type="button" className="btn btn-login" onClick={goToDashboard}>
+                {role === "buyer" ? "🏠 Buyer" : role === "seller" ? "🏷️ Seller" : role === "agent" ? "🤝 Agent" : role === "admin" ? "⚙️ Admin" : ""} Dashboard
+              </button>
               <button type="button" className="btn btn-login" onClick={logout}>{displayName} · Logout</button>
             </>
           )}
