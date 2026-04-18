@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mysql -u root -p1697)",
+      "Bash(where mysql:*)",
+      "Read(//c/Program Files/MySQL/MySQL Server 8.0/**)",
+      "Read(//c/Program Files/MySQL//**)"
+    ]
+  }
+}
