@@ -209,6 +209,8 @@ app.get("/api/properties", async (req, res) => {
     if (status && status !== "any") {
       conditions.push("status = ?");
       params.push(status);
+    } else if (!status || status === "any") {
+      conditions.push("status IN ('for_sale','for_rent')");
     }
     if (min_price) {
       conditions.push("price >= ?");
@@ -266,7 +268,7 @@ app.get("/api/properties/:id", async (req, res) => {
 app.get("/api/agents", async (req, res) => {
   try {
     const [rows] = await db.query(
-      "SELECT id, full_name, title, location, bio, avatar_initials, closed_deals, years_experience, rating FROM agents ORDER BY rating DESC"
+      "SELECT id, full_name, title, location, bio, avatar_initials, profile_picture, closed_deals, years_experience, rating FROM agents WHERE user_id IS NOT NULL ORDER BY rating DESC, created_at ASC"
     );
     res.json(rows);
   } catch (err) {
@@ -552,7 +554,8 @@ app.post("/api/buyer/inquiries", requireAuth, async (req, res) => {
 app.get("/api/buyer/transactions", requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT pt.id, pt.transaction_type, pt.status, pt.notes, pt.created_at,
+      `SELECT pt.id, pt.transaction_type, pt.status, pt.notes, pt.payment_method,
+              pt.commission_amount, pt.seller_amount, pt.created_at,
               p.title AS property_title, p.address AS property_address,
               p.city AS property_city, p.price AS property_price,
               p.image_url AS property_image, p.status AS property_status,
@@ -616,7 +619,7 @@ app.get("/api/admin/transactions", requireAdmin, async (req, res) => {
 
 app.patch("/api/admin/transactions/:id", requireAdmin, async (req, res) => {
   const { status } = req.body || {};
-  if (!["pending", "approved", "completed", "cancelled"].includes(status))
+  if (!["pending", "approved", "seller_accepted", "completed", "cancelled"].includes(status))
     return res.status(400).json({ message: "Invalid status" });
   try {
     await db.query("UPDATE property_transactions SET status = ? WHERE id = ?", [status, req.params.id]);
@@ -640,6 +643,13 @@ app.get("/api/buyer/saved-ids", requireAuth, async (req, res) => {
     console.error("Error loading saved IDs", err);
     res.status(500).json({ message: "Database error" });
   }
+});
+
+// ── Agent: photo upload ───────────────────────────────────────────────────────
+
+app.post("/api/agent/upload-photo", requireAgent, upload.single("photo"), (req, res) => {
+  if (!req.file) return res.status(400).json({ message: "No photo uploaded" });
+  res.json({ url: `/uploads/${req.file.filename}` });
 });
 
 // ── Image upload ──────────────────────────────────────────────────────────────
@@ -745,15 +755,107 @@ app.get("/api/seller/transactions", requireSeller, async (req, res) => {
 app.get("/api/agent/profile", requireAgent, async (req, res) => {
   try {
     const [rows] = await db.query(
-      "SELECT * FROM agents WHERE LOWER(full_name) LIKE LOWER(CONCAT('%', ?, '%')) LIMIT 1",
-      [req.user.email.split("@")[0]]
+      "SELECT * FROM agents WHERE user_id = ? LIMIT 1",
+      [req.user.sub]
     );
-    // fallback: return first agent if no name match (demo)
-    if (!rows.length) {
-      const [all] = await db.query("SELECT * FROM agents LIMIT 1");
-      return res.json(all[0] || null);
-    }
-    res.json(rows[0]);
+    res.json(rows[0] || null);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Database error" });
+  }
+});
+
+app.post("/api/agent/profile", requireAgent, async (req, res) => {
+  const {
+    full_name: inputName,
+    title, location, bio, years_experience, closed_deals, phone, profile_picture,
+    expertise, credentials, services, social_linkedin, social_facebook, social_instagram,
+    achievements, availability, certifications, areas_covered, testimonials,
+  } = req.body || {};
+  try {
+    const [existing] = await db.query("SELECT id FROM agents WHERE user_id = ? LIMIT 1", [req.user.sub]);
+    if (existing.length) return res.status(409).json({ message: "Profile already exists. Use PUT to update." });
+
+    const [userRows] = await db.query("SELECT full_name FROM users WHERE id = ?", [req.user.sub]);
+    const full_name = (inputName || "").trim() || userRows[0]?.full_name || "Agent";
+    const parts = full_name.trim().split(/\s+/);
+    const avatar_initials = ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase() || "AG";
+
+    // Keep users table in sync
+    await db.query("UPDATE users SET full_name = ? WHERE id = ?", [full_name, req.user.sub]);
+
+    const [result] = await db.query(
+      `INSERT INTO agents
+        (user_id, full_name, title, location, bio, avatar_initials, phone, profile_picture,
+         expertise, credentials, services, social_linkedin, social_facebook, social_instagram,
+         achievements, availability, certifications, areas_covered, testimonials,
+         closed_deals, years_experience)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        req.user.sub, full_name, title || null, location || null, bio || null, avatar_initials,
+        phone || null, profile_picture || null,
+        expertise ? JSON.stringify(expertise) : null,
+        credentials || null,
+        services ? JSON.stringify(services) : null,
+        social_linkedin || null, social_facebook || null, social_instagram || null,
+        achievements || null, availability || null,
+        certifications ? JSON.stringify(certifications) : null,
+        areas_covered || null,
+        testimonials ? JSON.stringify(testimonials) : null,
+        Number(closed_deals) || 0, Number(years_experience) || 0,
+      ]
+    );
+    res.status(201).json({ id: result.insertId, message: "Profile created" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Database error" });
+  }
+});
+
+app.put("/api/agent/profile", requireAgent, async (req, res) => {
+  const {
+    full_name: inputName,
+    title, location, bio, years_experience, closed_deals, phone, profile_picture,
+    expertise, credentials, services, social_linkedin, social_facebook, social_instagram,
+    achievements, availability, certifications, areas_covered, testimonials,
+  } = req.body || {};
+  try {
+    const [rows] = await db.query("SELECT id, full_name FROM agents WHERE user_id = ? LIMIT 1", [req.user.sub]);
+    if (!rows.length) return res.status(404).json({ message: "Profile not found. Use POST to create." });
+
+    const full_name = (inputName || "").trim() || rows[0].full_name || "Agent";
+    const parts = full_name.trim().split(/\s+/);
+    const avatar_initials = ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase() || "AG";
+
+    // Keep users table in sync
+    await db.query("UPDATE users SET full_name = ? WHERE id = ?", [full_name, req.user.sub]);
+
+    await db.query(
+      `UPDATE agents SET
+        full_name=?, avatar_initials=?,
+        title=?, location=?, bio=?, years_experience=?, closed_deals=?,
+        phone=?, profile_picture=?,
+        expertise=?, credentials=?, services=?,
+        social_linkedin=?, social_facebook=?, social_instagram=?,
+        achievements=?, availability=?, certifications=?, areas_covered=?, testimonials=?
+       WHERE user_id=?`,
+      [
+        full_name, avatar_initials,
+        title || null, location || null, bio || null,
+        Number(years_experience) || 0, Number(closed_deals) || 0,
+        phone || null, profile_picture || null,
+        expertise ? JSON.stringify(expertise) : null,
+        credentials || null,
+        services ? JSON.stringify(services) : null,
+        social_linkedin || null, social_facebook || null, social_instagram || null,
+        achievements || null, availability || null,
+        certifications ? JSON.stringify(certifications) : null,
+        areas_covered || null,
+        testimonials ? JSON.stringify(testimonials) : null,
+        req.user.sub,
+      ]
+    );
+    res.json({ message: "Profile updated" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Database error" });
@@ -762,19 +864,23 @@ app.get("/api/agent/profile", requireAgent, async (req, res) => {
 
 app.get("/api/agent/transactions", requireAgent, async (req, res) => {
   try {
-    // For demo: agents table has id separate from users table.
-    // We join by getting all transactions and showing them to any agent.
+    const [agentRows] = await db.query("SELECT id FROM agents WHERE user_id = ? LIMIT 1", [req.user.sub]);
+    if (!agentRows.length) return res.json([]);
+    const agentId = agentRows[0].id;
     const [rows] = await db.query(
       `SELECT pt.id, pt.transaction_type, pt.status, pt.payment_method, pt.notes, pt.created_at,
+              pt.commission_amount, pt.seller_amount,
               u.full_name AS buyer_name, u.email AS buyer_email,
               p.title AS property_title, p.price AS property_price,
-              p.city AS property_city, p.image_url AS property_image,
+              p.city AS property_city, p.image_url AS property_image, p.status AS property_status,
               a.full_name AS agent_name, a.id AS agent_id
        FROM property_transactions pt
        JOIN users u ON u.id = pt.buyer_id
        JOIN properties p ON p.id = pt.property_id
        JOIN agents a ON a.id = pt.agent_id
-       ORDER BY pt.created_at DESC`
+       WHERE pt.agent_id = ?
+       ORDER BY pt.created_at DESC`,
+      [agentId]
     );
     res.json(rows);
   } catch (err) {
@@ -785,20 +891,80 @@ app.get("/api/agent/transactions", requireAgent, async (req, res) => {
 
 app.patch("/api/agent/transactions/:id", requireAgent, async (req, res) => {
   const { status } = req.body || {};
-  if (!["pending", "approved", "completed", "cancelled"].includes(status))
+  if (!["completed", "cancelled"].includes(status))
     return res.status(400).json({ message: "Invalid status" });
   try {
     const [rows] = await db.query(
-      "SELECT pt.buyer_id, p.title FROM property_transactions pt JOIN properties p ON p.id = pt.property_id WHERE pt.id = ?",
+      `SELECT pt.buyer_id, pt.status AS current_status, pt.transaction_type,
+              p.title, p.price, p.id AS property_id, p.seller_id
+       FROM property_transactions pt
+       JOIN properties p ON p.id = pt.property_id
+       WHERE pt.id = ?`,
       [req.params.id]
     );
-    await db.query("UPDATE property_transactions SET status = ? WHERE id = ?", [status, req.params.id]);
-    if (rows.length) {
-      const msgMap = { approved: "approved ✅", completed: "marked as completed 🎉", cancelled: "cancelled ❌" };
-      if (msgMap[status]) {
-        await createNotification(rows[0].buyer_id, "transaction", `Transaction ${msgMap[status]}`,
-          `Your request for "${rows[0].title}" has been ${msgMap[status]}.`);
+    if (!rows.length) return res.status(404).json({ message: "Transaction not found" });
+    const tx = rows[0];
+
+    const sellerAcceptedStatuses = ["seller_accepted", "approved"];
+    if (status === "completed" && !sellerAcceptedStatuses.includes(tx.current_status))
+      return res.status(400).json({ message: "Can only complete deals accepted by the seller" });
+
+    if (status === "completed") {
+      const commission = Math.round(Number(tx.price) * 0.03 * 100) / 100;
+      const sellerAmount = Math.round((Number(tx.price) - commission) * 100) / 100;
+      const newPropertyStatus = tx.transaction_type === "rent" ? "rented" : "sold";
+      await db.query(
+        "UPDATE property_transactions SET status = ?, commission_amount = ?, seller_amount = ? WHERE id = ?",
+        [status, commission, sellerAmount, req.params.id]
+      );
+      await db.query("UPDATE properties SET status = ? WHERE id = ?", [newPropertyStatus, tx.property_id]);
+      await createNotification(tx.buyer_id, "transaction", "Deal completed 🎉",
+        `Your ${tx.transaction_type} of "${tx.title}" is complete. The property is now ${newPropertyStatus}.`);
+      if (tx.seller_id) {
+        await createNotification(tx.seller_id, "transaction", "Payment ready 💰",
+          `Your property "${tx.title}" has been ${newPropertyStatus}. You receive $${sellerAmount.toLocaleString()}.`);
       }
+    } else {
+      await db.query("UPDATE property_transactions SET status = ? WHERE id = ?", [status, req.params.id]);
+      await createNotification(tx.buyer_id, "transaction", "Transaction cancelled ❌",
+        `Your request for "${tx.title}" has been cancelled by the agent.`);
+    }
+    res.json({ message: "Transaction updated" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Database error" });
+  }
+});
+
+// ── Seller: Accept or reject pending offers ───────────────────────────────
+
+app.patch("/api/seller/transactions/:id", requireSeller, async (req, res) => {
+  const { status } = req.body || {};
+  if (!["seller_accepted", "cancelled"].includes(status))
+    return res.status(400).json({ message: "Invalid status. Use seller_accepted or cancelled" });
+  try {
+    const [rows] = await db.query(
+      `SELECT pt.buyer_id, pt.status AS current_status, pt.transaction_type,
+              p.title, p.seller_id
+       FROM property_transactions pt
+       JOIN properties p ON p.id = pt.property_id
+       WHERE pt.id = ?`,
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ message: "Transaction not found" });
+    const tx = rows[0];
+    if (String(tx.seller_id) !== String(req.user.sub))
+      return res.status(403).json({ message: "Not your property" });
+    if (tx.current_status !== "pending")
+      return res.status(400).json({ message: "Can only respond to pending offers" });
+
+    await db.query("UPDATE property_transactions SET status = ? WHERE id = ?", [status, req.params.id]);
+    if (status === "seller_accepted") {
+      await createNotification(tx.buyer_id, "transaction", "Seller accepted your offer 🏠",
+        `The seller accepted your ${tx.transaction_type} request for "${tx.title}". The agent will now finalize the deal.`);
+    } else {
+      await createNotification(tx.buyer_id, "transaction", "Offer declined",
+        `The seller declined your ${tx.transaction_type} request for "${tx.title}".`);
     }
     res.json({ message: "Transaction updated" });
   } catch (err) {

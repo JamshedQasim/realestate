@@ -3,12 +3,21 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 
 const STATUS_COLORS = {
-  pending:   { bg: "#fff8ec", color: "#c98240" },
-  replied:   { bg: "#ecf8f0", color: "#2a7d4a" },
-  approved:  { bg: "#ecf8f0", color: "#2a7d4a" },
-  completed: { bg: "#eaf0ff", color: "#1a4fbd" },
-  closed:    { bg: "#f0f0f0", color: "#7b8193" },
-  cancelled: { bg: "#fff0f0", color: "#c0392b" },
+  pending:         { bg: "#fff8ec", color: "#c98240" },
+  replied:         { bg: "#ecf8f0", color: "#2a7d4a" },
+  seller_accepted: { bg: "#ecf8f0", color: "#2a7d4a" },
+  approved:        { bg: "#ecf8f0", color: "#2a7d4a" },
+  completed:       { bg: "#eaf0ff", color: "#1a4fbd" },
+  closed:          { bg: "#f0f0f0", color: "#7b8193" },
+  cancelled:       { bg: "#fff0f0", color: "#c0392b" },
+};
+
+const STATUS_LABELS = {
+  pending:         "New Offer — Action Required",
+  seller_accepted: "Accepted — Awaiting Agent",
+  approved:        "Accepted — Awaiting Agent",
+  completed:       "Completed",
+  cancelled:       "Cancelled",
 };
 
 const EMPTY_FORM = {
@@ -204,9 +213,25 @@ export default function SellerDashboard() {
     setProperties(prev => prev.filter(p => p.id !== id));
   }
 
-  const totalValue = properties.reduce((s, p) => s + Number(p.price || 0), 0);
-  const pendingTx  = transactions.filter(t => t.status === "pending").length;
+  const [updatingTx, setUpdatingTx] = useState(null);
+
+  async function respondToTransaction(id, status) {
+    setUpdatingTx(id);
+    await fetch(`/api/seller/transactions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ status }),
+    });
+    setTransactions(prev => prev.map(t => t.id === id ? { ...t, status } : t));
+    setUpdatingTx(null);
+  }
+
+  const totalValue   = properties.reduce((s, p) => s + Number(p.price || 0), 0);
+  const actionNeeded = transactions.filter(t => t.status === "pending").length;
   const completedTx = transactions.filter(t => t.status === "completed").length;
+  const totalEarnings = transactions
+    .filter(t => t.status === "completed")
+    .reduce((s, t) => s + Number(t.seller_amount || 0), 0);
 
   return (
     <main className="page">
@@ -227,8 +252,9 @@ export default function SellerDashboard() {
             { value: properties.length, label: "Active listings" },
             { value: `$${totalValue.toLocaleString()}`, label: "Total listing value" },
             { value: inquiries.length, label: "Inquiries received" },
-            { value: pendingTx, label: "Pending deals" },
+            { value: actionNeeded, label: "Action required" },
             { value: completedTx, label: "Completed deals" },
+            { value: `$${Math.round(totalEarnings).toLocaleString()}`, label: "Total earned" },
           ].map(s => (
             <div className="stat-card" key={s.label}>
               <span className="stat-value" style={{ fontSize: s.value.toString().length > 6 ? "1.2rem" : undefined }}>{s.value}</span>
@@ -416,8 +442,9 @@ export default function SellerDashboard() {
             : <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {transactions.map(tx => {
                   const c = STATUS_COLORS[tx.status] || STATUS_COLORS.pending;
+                  const isBusy = updatingTx === tx.id;
                   return (
-                    <div className="section-panel" key={tx.id} style={{ padding: "16px 20px" }}>
+                    <div className="section-panel" key={tx.id} style={{ padding: "16px 20px", borderLeft: tx.status === "pending" ? "3px solid #c98240" : undefined }}>
                       <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, alignItems: "flex-start" }}>
                         <div>
                           <div style={{ fontWeight: 700 }}>{tx.property_title}</div>
@@ -425,7 +452,7 @@ export default function SellerDashboard() {
                         </div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <span style={{ background: "var(--accent-soft)", color: "var(--accent-dark)", padding: "3px 10px", borderRadius: "var(--radius-pill)", fontSize: "0.72rem", fontWeight: 600, textTransform: "capitalize" }}>{tx.transaction_type}</span>
-                          <span style={{ background: c.bg, color: c.color, padding: "3px 10px", borderRadius: "var(--radius-pill)", fontSize: "0.72rem", fontWeight: 600, textTransform: "capitalize" }}>{tx.status}</span>
+                          <span style={{ background: c.bg, color: c.color, padding: "3px 10px", borderRadius: "var(--radius-pill)", fontSize: "0.72rem", fontWeight: 600 }}>{STATUS_LABELS[tx.status] || tx.status}</span>
                           {tx.payment_method && <span style={{ background: "var(--surface-soft)", color: "var(--text-muted)", padding: "3px 10px", borderRadius: "var(--radius-pill)", fontSize: "0.72rem", textTransform: "capitalize" }}>{tx.payment_method}</span>}
                         </div>
                       </div>
@@ -433,6 +460,27 @@ export default function SellerDashboard() {
                         <div style={{ fontWeight: 600, fontSize: "0.85rem" }}>Buyer: {tx.buyer_name}</div>
                         <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{tx.buyer_email} · Agent: {tx.agent_name}</div>
                       </div>
+                      {tx.status === "pending" && (
+                        <div style={{ marginTop: 10 }}>
+                          <div style={{ fontSize: "0.82rem", color: "#c98240", marginBottom: 8 }}>
+                            A buyer wants to {tx.transaction_type} this property. Accept or reject?
+                          </div>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button className="btn btn-primary" style={{ fontSize: "0.78rem", padding: "6px 14px" }} disabled={isBusy} onClick={() => respondToTransaction(tx.id, "seller_accepted")}>{isBusy ? "…" : "Accept Offer"}</button>
+                            <button className="btn btn-outline" style={{ fontSize: "0.78rem", padding: "6px 14px", color: "#c0392b", borderColor: "#f5c6c6" }} disabled={isBusy} onClick={() => respondToTransaction(tx.id, "cancelled")}>Reject</button>
+                          </div>
+                        </div>
+                      )}
+                      {tx.status === "completed" && (
+                        <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ background: "#ecf8f0", color: "#2a7d4a", padding: "4px 12px", borderRadius: "var(--radius-pill)", fontSize: "0.75rem", fontWeight: 600 }}>
+                            You received: ${Number(tx.seller_amount || 0).toLocaleString()}
+                          </span>
+                          <span style={{ background: "#eaf0ff", color: "#1a4fbd", padding: "4px 12px", borderRadius: "var(--radius-pill)", fontSize: "0.75rem" }}>
+                            Agent commission: ${Number(tx.commission_amount || 0).toLocaleString()}
+                          </span>
+                        </div>
+                      )}
                       <div style={{ marginTop: 6, fontSize: "0.72rem", color: "var(--text-muted)" }}>{new Date(tx.created_at).toLocaleDateString()}</div>
                     </div>
                   );

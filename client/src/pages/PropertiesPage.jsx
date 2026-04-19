@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 
@@ -330,7 +330,13 @@ export default function PropertiesPage() {
             {loading && <div className="section-panel">Loading properties…</div>}
             {!loading && error && <div className="section-panel">{error}</div>}
             {!loading && !error && items.length === 0 && (
-              <div className="section-panel">No properties match your filters.</div>
+              <div className="section-panel" style={{ textAlign: "center", padding: "48px 24px" }}>
+                <div style={{ fontSize: "3rem", marginBottom: 12 }}>🏠</div>
+                <h3 style={{ margin: "0 0 8px", fontSize: "1.1rem" }}>No properties listed yet</h3>
+                <p style={{ margin: 0, color: "var(--text-muted)", fontSize: "0.9rem" }}>
+                  Properties will appear here once sellers list them. Check back soon.
+                </p>
+              </div>
             )}
             {!loading &&
               !error &&

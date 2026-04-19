@@ -64,8 +64,10 @@ export default function AgentsPage() {
             items.map((a) => (
               <article className="info-card agent-card" key={a.id}>
                 <div className="agent-card-header">
-                  <div className="agent-avatar">
-                    {a.avatar_initials || "EH"}
+                  <div className="agent-avatar" style={{ overflow: "hidden", padding: 0 }}>
+                    {a.profile_picture
+                      ? <img src={a.profile_picture} alt={a.full_name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
+                      : (a.avatar_initials || "EH")}
                   </div>
                   <div>
                     <h3 className="agent-name">{a.full_name}</h3>

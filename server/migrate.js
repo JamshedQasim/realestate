@@ -187,8 +187,11 @@ async function migrate() {
       property_id BIGINT UNSIGNED NOT NULL,
       agent_id BIGINT UNSIGNED NOT NULL,
       transaction_type ENUM('purchase','rent') NOT NULL DEFAULT 'purchase',
-      status ENUM('pending','approved','completed','cancelled') NOT NULL DEFAULT 'pending',
+      status ENUM('pending','approved','seller_accepted','completed','cancelled') NOT NULL DEFAULT 'pending',
       notes TEXT NULL,
+      payment_method ENUM('cash','card') NOT NULL DEFAULT 'cash',
+      commission_amount DECIMAL(12,2) NULL,
+      seller_amount DECIMAL(12,2) NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (id),
       FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -197,6 +200,67 @@ async function migrate() {
     )
   `);
   console.log("  ✓ property_transactions table ready");
+
+  // ── 7. Add seller_id to properties if missing ────────────────────────────
+  const step7 = [
+    {
+      label: "Add seller_id column to properties",
+      sql: "ALTER TABLE properties ADD COLUMN seller_id BIGINT UNSIGNED NULL AFTER image_url",
+    },
+    {
+      label: "Extend properties status ENUM with sold/rented",
+      sql: "ALTER TABLE properties MODIFY COLUMN status ENUM('for_sale','for_rent','sold','rented') NOT NULL DEFAULT 'for_sale'",
+    },
+    {
+      label: "Extend property_transactions status ENUM",
+      sql: "ALTER TABLE property_transactions MODIFY COLUMN status ENUM('pending','approved','seller_accepted','completed','cancelled') NOT NULL DEFAULT 'pending'",
+    },
+    {
+      label: "Add payment_method column to property_transactions",
+      sql: "ALTER TABLE property_transactions ADD COLUMN payment_method ENUM('cash','card') NOT NULL DEFAULT 'cash' AFTER notes",
+    },
+    {
+      label: "Add commission_amount column to property_transactions",
+      sql: "ALTER TABLE property_transactions ADD COLUMN commission_amount DECIMAL(12,2) NULL AFTER payment_method",
+    },
+    {
+      label: "Add seller_amount column to property_transactions",
+      sql: "ALTER TABLE property_transactions ADD COLUMN seller_amount DECIMAL(12,2) NULL AFTER commission_amount",
+    },
+  ];
+
+  for (const step of step7) {
+    try {
+      await db.query(step.sql);
+      console.log(`  ✓ ${step.label}`);
+    } catch (err) {
+      if (err.code === "ER_DUP_FIELDNAME" || err.code === "ER_DUP_KEYNAME") {
+        console.log(`  – ${step.label} (already exists, skipped)`);
+      } else {
+        // MODIFY can fail if column already has correct definition — log and continue
+        console.log(`  – ${step.label} (skipped: ${err.message})`);
+      }
+    }
+  }
+
+  // ── 8. Create viewings table ──────────────────────────────────────────────
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS viewings (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      buyer_id BIGINT UNSIGNED NOT NULL,
+      property_id BIGINT UNSIGNED NOT NULL,
+      agent_id BIGINT UNSIGNED NULL,
+      scheduled_date DATE NOT NULL,
+      scheduled_time TIME NOT NULL,
+      notes TEXT NULL,
+      status ENUM('pending','confirmed','cancelled','completed') NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+    )
+  `);
+  console.log("  ✓ viewings table ready");
 
   console.log("\nMigration complete.");
   process.exit(0);

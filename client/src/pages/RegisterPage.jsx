@@ -1,8 +1,17 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext.jsx";
+
+const ROLE_REDIRECT = {
+  buyer:  "/buyer-dashboard",
+  seller: "/seller-dashboard",
+  agent:  "/agent-dashboard",
+  admin:  "/admin-dashboard",
+};
 
 export default function RegisterPage() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [role, setRole] = useState("buyer");
@@ -24,8 +33,10 @@ export default function RegisterPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.message || "Registration failed");
-      // Registration succeeded; send user to login page
-      navigate("/login");
+
+      // Auto-login with the token returned from registration
+      login(data.user, data.token);
+      navigate(ROLE_REDIRECT[data.user?.role] || "/");
     } catch (err) {
       setError(err?.message || "Registration failed");
     } finally {
@@ -99,7 +110,7 @@ export default function RegisterPage() {
             </select>
           </div>
 
-          {error ? <div className="section-panel">{error}</div> : null}
+          {error ? <div className="section-panel" style={{ color: "#c0392b", background: "#fff0f0" }}>{error}</div> : null}
 
           <button
             type="submit"
@@ -113,4 +124,3 @@ export default function RegisterPage() {
     </main>
   );
 }
-

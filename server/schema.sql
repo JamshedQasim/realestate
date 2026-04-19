@@ -25,24 +25,40 @@ CREATE TABLE IF NOT EXISTS properties (
   bedrooms INT NOT NULL DEFAULT 0,
   bathrooms INT NOT NULL DEFAULT 0,
   size_sqft INT NOT NULL DEFAULT 0,
-  status ENUM('for_sale','for_rent') NOT NULL DEFAULT 'for_sale',
+  status ENUM('for_sale','for_rent','sold','rented') NOT NULL DEFAULT 'for_sale',
   image_url TEXT NULL,
+  seller_id BIGINT UNSIGNED NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id)
 );
 
 CREATE TABLE IF NOT EXISTS agents (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NULL,
   full_name VARCHAR(255) NOT NULL,
   title VARCHAR(255) NULL,
   location VARCHAR(255) NULL,
   bio TEXT NULL,
+  expertise TEXT NULL,
+  credentials TEXT NULL,
+  services TEXT NULL,
+  social_linkedin VARCHAR(255) NULL,
+  social_facebook VARCHAR(255) NULL,
+  social_instagram VARCHAR(255) NULL,
+  achievements TEXT NULL,
+  availability TEXT NULL,
+  certifications TEXT NULL,
+  areas_covered TEXT NULL,
+  testimonials TEXT NULL,
   avatar_initials VARCHAR(10) NULL,
+  phone VARCHAR(50) NULL,
+  profile_picture VARCHAR(500) NULL,
   closed_deals INT NOT NULL DEFAULT 0,
   years_experience INT NOT NULL DEFAULT 0,
   rating DECIMAL(2,1) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (id)
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_agents_user (user_id)
 );
 
 CREATE TABLE IF NOT EXISTS blog_posts (
@@ -89,67 +105,42 @@ CREATE TABLE IF NOT EXISTS property_inquiries (
   FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
 );
 
--- Seed sample data
-INSERT INTO properties (title, address, city, property_type, description, price, bedrooms, bathrooms, size_sqft, status, image_url) VALUES
-  ('Skyline Loft Apartment', '4651 South Burlington Ave', 'New York', 'apartment',
-   'Modern loft with stunning city views, exposed brick walls, and an open-plan kitchen. Walking distance to public transit and top restaurants.',
-   154000, 3, 3, 1200, 'for_sale',
-   'https://images.pexels.com/photos/259588/pexels-photo-259588.jpeg?auto=compress&cs=tinysrgb&w=800'),
-  ('Willow Creek Residence', '8412 Willow Creek Drive', 'Seattle', 'house',
-   'Spacious family home in a quiet neighborhood with a large backyard, modern kitchen, and attached two-car garage.',
-   245000, 4, 3, 2400, 'for_sale',
-   'https://images.pexels.com/photos/106399/pexels-photo-106399.jpeg?auto=compress&cs=tinysrgb&w=800'),
-  ('Oceanview Penthouse', '19 Seaside Avenue', 'Los Angeles', 'penthouse',
-   'Luxurious penthouse with panoramic ocean views, private terrace, gourmet kitchen, and concierge service.',
-   310000, 2, 2, 1800, 'for_sale',
-   'https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg?auto=compress&cs=tinysrgb&w=800'),
-  ('Citylight Studio', '4210 Elm Street', 'New York', 'studio',
-   'Cozy studio in the heart of the city, perfect for young professionals. Floor-to-ceiling windows and modern finishes.',
-   98000, 1, 1, 950, 'for_sale',
-   'https://images.pexels.com/photos/259580/pexels-photo-259580.jpeg?auto=compress&cs=tinysrgb&w=800'),
-  ('Brooklyn Heights Condo', '55 Montague Street', 'New York', 'condo',
-   'Bright corner condo with hardwood floors, updated kitchen, and private balcony overlooking tree-lined streets.',
-   189000, 2, 2, 1150, 'for_sale',
-   'https://images.pexels.com/photos/323780/pexels-photo-323780.jpeg?auto=compress&cs=tinysrgb&w=800'),
-  ('Malibu Beach House', '7 Pacific Coast Highway', 'Los Angeles', 'house',
-   'Stunning beachfront home with direct sand access, wraparound deck, and breathtaking sunset views.',
-   520000, 4, 4, 3200, 'for_sale',
-   'https://images.pexels.com/photos/731082/pexels-photo-731082.jpeg?auto=compress&cs=tinysrgb&w=800'),
-  ('Capitol Hill Apartment', '220 Broadway East', 'Seattle', 'apartment',
-   'Trendy apartment in Capitol Hill with rooftop access, in-unit laundry, and steps from restaurants and nightlife.',
-   1850, 1, 1, 720, 'for_rent',
-   'https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg?auto=compress&cs=tinysrgb&w=800'),
-  ('Manhattan Luxury Condo', '100 Central Park South', 'New York', 'condo',
-   'Exquisite condo overlooking Central Park with white-glove service, private gym, and heated underground parking.',
-   890000, 3, 3, 2100, 'for_sale',
-   'https://images.pexels.com/photos/2079234/pexels-photo-2079234.jpeg?auto=compress&cs=tinysrgb&w=800'),
-  ('Chicago River Apartment', '401 N Wabash Ave', 'Chicago', 'apartment',
-   'Modern apartment with river views, open floor plan, and access to building pool and fitness center.',
-   2200, 2, 2, 1050, 'for_rent',
-   'https://images.pexels.com/photos/439391/pexels-photo-439391.jpeg?auto=compress&cs=tinysrgb&w=800'),
-  ('Hyde Park Townhouse', '5450 S Cornell Ave', 'Chicago', 'house',
-   'Charming brick townhouse with three floors, private garden, original woodwork, and updated systems throughout.',
-   375000, 3, 2, 1900, 'for_sale',
-   'https://images.pexels.com/photos/1396122/pexels-photo-1396122.jpeg?auto=compress&cs=tinysrgb&w=800'),
-  ('South Beach Studio', '1500 Collins Avenue', 'Miami', 'studio',
-   'Stylish studio steps from South Beach, recently renovated with designer finishes and access to a resort-style pool.',
-   1650, 0, 1, 580, 'for_rent',
-   'https://images.pexels.com/photos/2102587/pexels-photo-2102587.jpeg?auto=compress&cs=tinysrgb&w=800'),
-  ('Brickell Penthouse', '888 Brickell Ave', 'Miami', 'penthouse',
-   'Ultra-luxury penthouse with 270-degree city and bay views, private pool, and full smart home automation.',
-   750000, 4, 5, 4200, 'for_sale',
-   'https://images.pexels.com/photos/1029599/pexels-photo-1029599.jpeg?auto=compress&cs=tinysrgb&w=800');
+CREATE TABLE IF NOT EXISTS property_transactions (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  buyer_id BIGINT UNSIGNED NOT NULL,
+  property_id BIGINT UNSIGNED NOT NULL,
+  agent_id BIGINT UNSIGNED NOT NULL,
+  transaction_type ENUM('purchase','rent') NOT NULL DEFAULT 'purchase',
+  status ENUM('pending','approved','seller_accepted','completed','cancelled') NOT NULL DEFAULT 'pending',
+  notes TEXT NULL,
+  payment_method ENUM('cash','card') NOT NULL DEFAULT 'cash',
+  commission_amount DECIMAL(12,2) NULL,
+  seller_amount DECIMAL(12,2) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE,
+  FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+);
 
-INSERT INTO agents (full_name, title, location, bio, avatar_initials, closed_deals, years_experience, rating) VALUES
-  ('Marta Greene', 'Senior Buying Specialist', 'Manhattan',
-   'Focused on condos and new-build developments, with a reputation for winning competitive bids without overpaying.',
-   'MG', 120, 8, 4.9),
-  ('Jonas Baird', 'Family Homes', 'Brooklyn',
-   'Guides growing families through upsizing, with deep knowledge of school zones, parks, and transit.',
-   'JB', 95, 6, 4.9),
-  ('Lena Shore', 'Waterfront & Luxury', 'Coastal',
-   'Specializes in high-end and waterfront properties, offering bespoke tours and discreet negotiation support.',
-   'LS', 87, 10, 4.8);
+CREATE TABLE IF NOT EXISTS viewings (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  buyer_id BIGINT UNSIGNED NOT NULL,
+  property_id BIGINT UNSIGNED NOT NULL,
+  agent_id BIGINT UNSIGNED NULL,
+  scheduled_date DATE NOT NULL,
+  scheduled_time TIME NOT NULL,
+  notes TEXT NULL,
+  status ENUM('pending','confirmed','cancelled','completed') NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE CASCADE
+);
+
+-- Properties are listed by registered sellers via the seller dashboard.
+
+-- Agents are self-registered: users with role='agent' complete their profile via the agent dashboard.
 
 INSERT INTO blog_posts (category, read_time_minutes, title, excerpt) VALUES
   ('Market', 5, 'How to read today''s housing prices',
