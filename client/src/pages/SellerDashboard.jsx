@@ -65,7 +65,7 @@ function ImageUploader({ token, onUploaded }) {
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || "Upload failed");
       onUploaded(data.urls);
       setPreviews([]);
@@ -193,7 +193,7 @@ export default function SellerDashboard() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message || "Failed to list property");
       const newProp = { ...payload, id: data.id, created_at: new Date().toISOString() };
       setProperties(prev => [newProp, ...prev]);
