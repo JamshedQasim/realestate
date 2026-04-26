@@ -199,7 +199,7 @@ app.get("/api/properties", async (req, res) => {
   try {
     const { city, status, min_price, max_price, min_beds, property_type, sort } = req.query;
 
-    const conditions = [];
+    const conditions = ["seller_id IS NOT NULL"];
     const params = [];
 
     if (city && city !== "Any") {

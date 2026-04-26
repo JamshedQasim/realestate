@@ -359,10 +359,7 @@ export default function PropertiesPage() {
                           </button>
                         )}
                         <img
-                          src={
-                            p.image_url ||
-                            "https://images.pexels.com/photos/106399/pexels-photo-106399.jpeg?auto=compress&cs=tinysrgb&w=800"
-                          }
+                          src={p.image_url || "https://images.pexels.com/photos/106399/pexels-photo-106399.jpeg?auto=compress&cs=tinysrgb&w=800"}
                           alt={p.title}
                           className="card-image"
                         />
